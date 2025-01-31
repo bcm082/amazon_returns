@@ -203,6 +203,13 @@ if selected == 'Home':
     # Display the plot
     st.plotly_chart(fig, use_container_width=True)
 
+    # Display monthly breakdown table
+    st.subheader("Monthly Returns Breakdown")
+    st.dataframe(
+        returns_summary_table.style.format(precision=0, na_rep='0'),
+        use_container_width=True
+    )
+
     # Load data for top returns table
     returns_data_2024 = load_returns_data_2024()
     sales_data_2024 = load_sales_data_2024()
