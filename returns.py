@@ -36,9 +36,6 @@ def load_all_returns_data():
     data_frames = []
     for file in returns_files:
         df = load_data(file, delimiter='\t')
-        # Debug: Output the raw data loaded
-        st.write(f"Debug - Loaded data from {file}:")
-        st.write(df.head())
         data_frames.append(df)
     
     # Combine all data frames
@@ -51,20 +48,29 @@ def create_returns_summary_table(data):
         # Create a copy of the data to avoid SettingWithCopyWarning
         df = data.copy()
         
+        # Ensure that all required columns are present
+        if 'Return request date' not in df.columns or 'Return quantity' not in df.columns:
+            st.error("Missing required columns in the data.")
+            return pd.DataFrame()
+
         # Convert dates to datetime
-        df['Return request date'] = pd.to_datetime(df['Return request date'], errors='coerce')
-        df = df.dropna(subset=['Return request date'])
-        
+        try:
+            df['Return request date'] = pd.to_datetime(df['Return request date'], errors='coerce')
+            df = df.dropna(subset=['Return request date'])
+        except Exception as e:
+            st.error(f"Error converting dates: {str(e)}")
+            return pd.DataFrame()
+
         # Create a new DataFrame with just the columns we need
         summary_data = pd.DataFrame({
             'Year': df['Return request date'].dt.year,
             'Month_Num': df['Return request date'].dt.month,
             'Return quantity': df['Return quantity']
         })
-        
+
         # Create the summary by year and month
         summary = summary_data.groupby(['Year', 'Month_Num'])['Return quantity'].sum().reset_index()
-        
+
         # Create a pivot table
         pivot_table = pd.pivot_table(
             summary,
@@ -73,27 +79,27 @@ def create_returns_summary_table(data):
             columns='Month_Num',
             fill_value=0
         )
-        
+
         # Rename columns to month names
         month_names = {
             1: 'Jan', 2: 'Feb', 3: 'Mar', 4: 'Apr', 5: 'May', 6: 'Jun',
             7: 'Jul', 8: 'Aug', 9: 'Sep', 10: 'Oct', 11: 'Nov', 12: 'Dec'
         }
         pivot_table = pivot_table.rename(columns=month_names)
-        
+
         # Ensure all months are present
         for month in month_names.values():
             if month not in pivot_table.columns:
                 pivot_table[month] = 0
-        
+
         # Sort columns by month order
         pivot_table = pivot_table[list(month_names.values())]
-        
+
         # Convert index to strings
         pivot_table.index = pivot_table.index.astype(str)
-        
+
         return pivot_table
-        
+    
     except Exception as e:
         st.error(f"Error processing dates: {str(e)}")
         empty_summary = pd.DataFrame(0, 
@@ -203,10 +209,6 @@ if selected == 'Home':
 
     st.title("Returns Summary Table")
 
-    # Debug: Output the summary table
-    st.write("Debug - Returns Summary Table:")
-    st.write(returns_summary_table)
-
     # Plot line graph with Plotly
     st.subheader("Returns Over Time")
     
@@ -214,10 +216,6 @@ if selected == 'Home':
     plot_df = returns_summary_table.reset_index()
     plot_df = pd.melt(plot_df, id_vars=['Year'], var_name='Month', value_name='Returns')
     
-    # Debug: Output the plot data
-    st.write("Debug - Plot Data:")
-    st.write(plot_df)
-
     # Create the line graph
     fig = px.line(
         plot_df,
