@@ -10,9 +10,10 @@ import top_sellers  # Import the top_sellers module
 @st.cache_data
 def load_data(file_path, delimiter):
     try:
-        return pd.read_csv(file_path, delimiter=delimiter, encoding='utf-8')
+        # Set low_memory=False to avoid DtypeWarning
+        return pd.read_csv(file_path, delimiter=delimiter, encoding='utf-8', low_memory=False)
     except UnicodeDecodeError:
-        return pd.read_csv(file_path, delimiter=delimiter, encoding='ISO-8859-1')
+        return pd.read_csv(file_path, delimiter=delimiter, encoding='ISO-8859-1', low_memory=False)
 
 def list_files(directory, file_extension):
     try:
@@ -20,38 +21,46 @@ def list_files(directory, file_extension):
     except FileNotFoundError:
         return []
 
+@st.cache_data
 def load_all_returns_data():
-    # Directories
-    returns_dir_2023 = 'Data/Returns/2023/'
-    returns_dir_2024 = 'Data/Returns/2024/'
-
-    # List files
-    returns_files_2023 = list_files(returns_dir_2023, '.tsv')
-    returns_files_2024 = list_files(returns_dir_2024, '.tsv')
-
-    # Load data
+    returns_dir = 'Data/Returns'
+    returns_files = []
+    
+    # Get all return files recursively
+    for root, _, files in os.walk(returns_dir):
+        for file in files:
+            if file.endswith('.tsv'):
+                returns_files.append(os.path.join(root, file))
+    
+    # Load and combine all returns files
     data_frames = []
-    for file in returns_files_2023:
-        df = load_data(os.path.join(returns_dir_2023, file), delimiter='\t')
+    for file in returns_files:
+        df = load_data(file, delimiter='\t')
         data_frames.append(df)
-    for file in returns_files_2024:
-        df = load_data(os.path.join(returns_dir_2024, file), delimiter='\t')
-        data_frames.append(df)
-
-    return pd.concat(data_frames, ignore_index=True)
+    
+    # Combine all data frames
+    if data_frames:
+        return pd.concat(data_frames, ignore_index=True)
+    return pd.DataFrame()
 
 def create_returns_summary_table(data):
     try:
-        # Convert dates to datetime
-        data['Return request date'] = pd.to_datetime(data['Return request date'], errors='coerce')
-        data = data.dropna(subset=['Return request date'])
+        # Create a copy of the data to avoid SettingWithCopyWarning
+        df = data.copy()
         
-        # Extract year and month number
-        data['Year'] = data['Return request date'].dt.year
-        data['Month_Num'] = data['Return request date'].dt.month
+        # Convert dates to datetime
+        df['Return request date'] = pd.to_datetime(df['Return request date'], errors='coerce')
+        df = df.dropna(subset=['Return request date'])
+        
+        # Create a new DataFrame with just the columns we need
+        summary_data = pd.DataFrame({
+            'Year': df['Return request date'].dt.year,
+            'Month_Num': df['Return request date'].dt.month,
+            'Return quantity': df['Return quantity']
+        })
         
         # Create the summary by year and month
-        summary = data.groupby(['Year', 'Month_Num'])['Return quantity'].sum().reset_index()
+        summary = summary_data.groupby(['Year', 'Month_Num'])['Return quantity'].sum().reset_index()
         
         # Create a pivot table
         pivot_table = pd.pivot_table(
@@ -84,7 +93,6 @@ def create_returns_summary_table(data):
         
     except Exception as e:
         st.error(f"Error processing dates: {str(e)}")
-        # Return an empty DataFrame with the correct structure
         empty_summary = pd.DataFrame(0, 
             index=['2023', '2024'],
             columns=['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 
@@ -92,17 +100,33 @@ def create_returns_summary_table(data):
         )
         return empty_summary
 
+@st.cache_data
 def load_returns_data_2024():
-    returns_dir_2024 = 'Data/Returns/2024/'
-    returns_files_2024 = list_files(returns_dir_2024, '.tsv')
-    data_frames = [load_data(os.path.join(returns_dir_2024, file), delimiter='\t') for file in returns_files_2024]
-    return pd.concat(data_frames, ignore_index=True)
+    returns_dir = 'Data/Returns/2024'
+    returns_files = list_files(returns_dir, '.tsv')
+    
+    data_frames = []
+    for file in returns_files:
+        df = load_data(os.path.join(returns_dir, file), delimiter='\t')
+        data_frames.append(df)
+    
+    if data_frames:
+        return pd.concat(data_frames, ignore_index=True)
+    return pd.DataFrame()
 
+@st.cache_data
 def load_sales_data_2024():
-    sales_dir_2024 = 'Data/Sales/2024/'
-    sales_files_2024 = list_files(sales_dir_2024, '.txt')
-    data_frames = [load_data(os.path.join(sales_dir_2024, file), delimiter='\t') for file in sales_files_2024]
-    return pd.concat(data_frames, ignore_index=True)
+    sales_dir = 'Data/Sales/2024'
+    sales_files = list_files(sales_dir, '.txt')
+    
+    data_frames = []
+    for file in sales_files:
+        df = load_data(os.path.join(sales_dir, file), delimiter='\t')
+        data_frames.append(df)
+    
+    if data_frames:
+        return pd.concat(data_frames, ignore_index=True)
+    return pd.DataFrame()
 
 def create_top_returns_table(returns_data, sales_data):
     # Extract relevant columns
