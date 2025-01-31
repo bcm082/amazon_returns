@@ -194,6 +194,10 @@ if selected == 'Home':
 
     st.title("Returns Summary Table")
 
+    # Debug: Output the summary table
+    st.write("Debug - Returns Summary Table:")
+    st.write(returns_summary_table)
+
     # Plot line graph with Plotly
     st.subheader("Returns Over Time")
     
@@ -201,6 +205,10 @@ if selected == 'Home':
     plot_df = returns_summary_table.reset_index()
     plot_df = pd.melt(plot_df, id_vars=['Year'], var_name='Month', value_name='Returns')
     
+    # Debug: Output the plot data
+    st.write("Debug - Plot Data:")
+    st.write(plot_df)
+
     # Create the line graph
     fig = px.line(
         plot_df,
