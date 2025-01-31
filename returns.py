@@ -41,23 +41,51 @@ def load_all_returns_data():
     return pd.concat(data_frames, ignore_index=True)
 
 def create_returns_summary_table(data):
-    # Convert 'Return request date' to datetime
-    data['Return request date'] = pd.to_datetime(data['Return request date'])
+    try:
+        # First try parsing with default format
+        data['Return request date'] = pd.to_datetime(data['Return request date'], errors='coerce')
+        
+        # If we have any NaT (Not a Time) values, try common date formats
+        if data['Return request date'].isna().any():
+            # Try different date formats
+            date_formats = ['%Y-%m-%d', '%m/%d/%Y', '%d/%m/%Y', '%Y/%m/%d', 
+                          '%m-%d-%Y', '%d-%m-%Y', '%Y.%m.%d', '%d.%m.%Y']
+            
+            for date_format in date_formats:
+                # Try to parse dates that are still NaT
+                mask = data['Return request date'].isna()
+                data.loc[mask, 'Return request date'] = pd.to_datetime(
+                    data.loc[mask, 'Return request date'],
+                    format=date_format,
+                    errors='coerce'
+                )
+        
+        # Drop rows where we couldn't parse the date
+        data = data.dropna(subset=['Return request date'])
+        
+        # Extract year and month
+        data['Year'] = data['Return request date'].dt.year
+        data['Month'] = data['Return request date'].dt.strftime('%b')
 
-    # Extract year and month
-    data['Year'] = data['Return request date'].dt.year
-    data['Month'] = data['Return request date'].dt.strftime('%b')
+        # Group by year and month, summing the 'Return quantity'
+        summary = data.groupby(['Year', 'Month'])['Return quantity'].sum().unstack(fill_value=0)
 
-    # Group by year and month, summing the 'Return quantity'
-    summary = data.groupby(['Year', 'Month'])['Return quantity'].sum().unstack(fill_value=0)
+        # Reorder columns to have months in calendar order
+        month_order = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+        summary = summary[month_order]
 
-    # Reorder columns to have months in calendar order
-    summary = summary[['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']]
+        # Format the year to avoid commas
+        summary.index = summary.index.map(str)  # Convert index to string to avoid formatting issues
 
-    # Format the year to avoid commas
-    summary.index = summary.index.map(str)  # Convert index to string to avoid formatting issues
-
-    return summary
+        return summary
+        
+    except Exception as e:
+        st.error(f"Error processing dates: {str(e)}")
+        # Return an empty DataFrame with the correct structure if there's an error
+        empty_summary = pd.DataFrame(columns=['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 
+                                            'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'])
+        empty_summary.index.name = 'Year'
+        return empty_summary
 
 def load_returns_data_2024():
     returns_dir_2024 = 'Data/Returns/2024/'

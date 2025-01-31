@@ -15,17 +15,50 @@ def list_files(directory, file_extension):
     except FileNotFoundError:
         return []
 
+@st.cache_data
 def load_sales_data(year):
     sales_dir = f'Data/Sales/{year}/'
     sales_files = list_files(sales_dir, '.txt')
-    data_frames = [load_data(os.path.join(sales_dir, file), delimiter='\t') for file in sales_files]
-    return pd.concat(data_frames, ignore_index=True)
+    
+    # Load and combine all sales files
+    data_frames = []
+    for file in sales_files:
+        df = load_data(os.path.join(sales_dir, file), delimiter='\t')
+        # Select only needed columns immediately to reduce memory usage
+        df = df[['asin', 'sku', 'product-name', 'quantity']]
+        data_frames.append(df)
+    
+    combined_df = pd.concat(data_frames, ignore_index=True)
+    
+    # Convert strings to lowercase for case-insensitive search
+    combined_df['asin_lower'] = combined_df['asin'].str.lower()
+    combined_df['sku_lower'] = combined_df['sku'].str.lower()
+    combined_df['product_name_lower'] = combined_df['product-name'].str.lower()
+    
+    return combined_df
 
+@st.cache_data
 def load_returns_data(year):
     returns_dir = f'Data/Returns/{year}/'
     returns_files = list_files(returns_dir, '.tsv')
-    data_frames = [load_data(os.path.join(returns_dir, file), delimiter='\t') for file in returns_files]
+    
+    # Load and combine all returns files
+    data_frames = []
+    for file in returns_files:
+        df = load_data(os.path.join(returns_dir, file), delimiter='\t')
+        # Select only needed columns immediately
+        df = df[['ASIN', 'Return quantity', 'Return Reason']]
+        data_frames.append(df)
+    
     return pd.concat(data_frames, ignore_index=True)
+
+@st.cache_data
+def process_returns_data(_returns_data, asin):
+    """Process returns data for a specific ASIN with caching"""
+    filtered_returns = _returns_data[_returns_data['ASIN'] == asin]
+    return_quantity = filtered_returns['Return quantity'].sum()
+    reasons = filtered_returns.groupby('Return Reason')['Return quantity'].sum()
+    return return_quantity, reasons
 
 def search_products_page():
     st.title("Search Products")
@@ -34,23 +67,26 @@ def search_products_page():
     search_query = st.text_input("Search for a product (ASIN, SKU, or Product Name)", "")
 
     if search_query:
-        # Load data
+        # Convert search query to lowercase once
+        search_query_lower = search_query.lower()
+        
+        # Load data with caching
         sales_data_2023 = load_sales_data(2023)
         sales_data_2024 = load_sales_data(2024)
         returns_data_2023 = load_returns_data(2023)
         returns_data_2024 = load_returns_data(2024)
 
-        # Search logic
+        # Optimized search logic using pre-computed lowercase columns
         search_results_2023 = sales_data_2023[
-            (sales_data_2023['asin'].str.contains(search_query, case=False, na=False)) |
-            (sales_data_2023['sku'].str.contains(search_query, case=False, na=False)) |
-            (sales_data_2023['product-name'].str.contains(search_query, case=False, na=False))
+            (sales_data_2023['asin_lower'].str.contains(search_query_lower, na=False)) |
+            (sales_data_2023['sku_lower'].str.contains(search_query_lower, na=False)) |
+            (sales_data_2023['product_name_lower'].str.contains(search_query_lower, na=False))
         ]
 
         search_results_2024 = sales_data_2024[
-            (sales_data_2024['asin'].str.contains(search_query, case=False, na=False)) |
-            (sales_data_2024['sku'].str.contains(search_query, case=False, na=False)) |
-            (sales_data_2024['product-name'].str.contains(search_query, case=False, na=False))
+            (sales_data_2024['asin_lower'].str.contains(search_query_lower, na=False)) |
+            (sales_data_2024['sku_lower'].str.contains(search_query_lower, na=False)) |
+            (sales_data_2024['product_name_lower'].str.contains(search_query_lower, na=False))
         ]
 
         # Calculate metrics
@@ -69,20 +105,21 @@ def search_products_page():
             })
             st.dataframe(id_table, hide_index=True)
 
-            # Prepare yearly data
+            # Prepare yearly data more efficiently
             yearly_data = []
             for _, row in unique_products.iterrows():
                 asin = row['asin']
                 sku = row['sku']
                 
-                # 2023 data
-                returns_2023 = returns_data_2023[returns_data_2023['ASIN'] == asin]['Return quantity'].sum()
-                sales_2023 = search_results_2023[search_results_2023['asin'] == asin]['quantity'].sum()
-                return_rate_2023 = (returns_2023 / sales_2023 * 100) if sales_2023 > 0 else 0
+                # Process returns data with caching
+                returns_2023, reasons_2023 = process_returns_data(returns_data_2023, asin)
+                returns_2024, reasons_2024 = process_returns_data(returns_data_2024, asin)
                 
-                # 2024 data
-                returns_2024 = returns_data_2024[returns_data_2024['ASIN'] == asin]['Return quantity'].sum()
+                # Process sales data
+                sales_2023 = search_results_2023[search_results_2023['asin'] == asin]['quantity'].sum()
                 sales_2024 = search_results_2024[search_results_2024['asin'] == asin]['quantity'].sum()
+                
+                return_rate_2023 = (returns_2023 / sales_2023 * 100) if sales_2023 > 0 else 0
                 return_rate_2024 = (returns_2024 / sales_2024 * 100) if sales_2024 > 0 else 0
                 
                 yearly_data.extend([
@@ -94,15 +131,14 @@ def search_products_page():
             yearly_data_table = pd.DataFrame(yearly_data)
             st.dataframe(yearly_data_table, hide_index=True)
 
-            # Display return reasons
-            st.subheader("Return Reasons")
+            # Display return reasons more efficiently
             all_reasons = []
             for _, row in unique_products.iterrows():
                 asin = row['asin']
                 sku = row['sku']
                 
-                reasons_2023 = returns_data_2023[returns_data_2023['ASIN'] == asin].groupby('Return Reason')['Return quantity'].sum()
-                reasons_2024 = returns_data_2024[returns_data_2024['ASIN'] == asin].groupby('Return Reason')['Return quantity'].sum()
+                _, reasons_2023 = process_returns_data(returns_data_2023, asin)
+                _, reasons_2024 = process_returns_data(returns_data_2024, asin)
                 
                 # Combine reasons for both years
                 all_reasons_product = pd.DataFrame({
