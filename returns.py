@@ -67,24 +67,34 @@ def create_returns_summary_table(data):
         data['Year'] = data['Return request date'].dt.year
         data['Month'] = data['Return request date'].dt.strftime('%b')
 
+        # Define all months in order
+        all_months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 
+                     'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+        
         # Group by year and month, summing the 'Return quantity'
         summary = data.groupby(['Year', 'Month'])['Return quantity'].sum().unstack(fill_value=0)
-
+        
+        # Ensure all months are present with 0 if missing
+        for month in all_months:
+            if month not in summary.columns:
+                summary[month] = 0
+        
         # Reorder columns to have months in calendar order
-        month_order = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
-        summary = summary[month_order]
+        summary = summary[all_months]
 
         # Format the year to avoid commas
         summary.index = summary.index.map(str)  # Convert index to string to avoid formatting issues
-
+        
         return summary
         
     except Exception as e:
         st.error(f"Error processing dates: {str(e)}")
         # Return an empty DataFrame with the correct structure if there's an error
-        empty_summary = pd.DataFrame(columns=['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 
-                                            'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'])
-        empty_summary.index.name = 'Year'
+        empty_summary = pd.DataFrame(0, 
+            index=['2023', '2024'],
+            columns=['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 
+                    'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+        )
         return empty_summary
 
 def load_returns_data_2024():
@@ -167,14 +177,31 @@ if selected == 'Home':
 
     # Plot line graph with Plotly
     st.subheader("Returns Over Time")
-    fig = px.line(returns_summary_table.T, labels={'value': 'Return Quantity', 'index': 'Month'}, 
-                  title='Returns Over Time', markers=True)
-    fig.update_traces(line=dict(color='green'), selector=dict(name='2023'))
-    fig.update_traces(line=dict(color='red'), selector=dict(name='2024'))
-    st.plotly_chart(fig)
-
-    # Display summary table
-    st.write(returns_summary_table.style.format(precision=0, na_rep='0'))
+    
+    # Prepare data for plotting
+    plot_data = returns_summary_table.copy()
+    
+    # Create the line graph
+    fig = px.line(plot_data.T, 
+                  labels={'value': 'Return Quantity', 'index': 'Month'}, 
+                  title='Returns Over Time',
+                  markers=True)
+    
+    # Update trace colors and ensure both years are shown
+    for year in plot_data.index:
+        color = 'green' if year == '2023' else 'red'
+        fig.update_traces(line=dict(color=color), selector=dict(name=year))
+    
+    # Update layout for better visibility
+    fig.update_layout(
+        xaxis_title="Month",
+        yaxis_title="Return Quantity",
+        legend_title="Year",
+        hovermode='x unified'
+    )
+    
+    # Display the plot
+    st.plotly_chart(fig, use_container_width=True)
 
     # Load data for top returns table
     returns_data_2024 = load_returns_data_2024()
