@@ -42,66 +42,49 @@ def load_all_returns_data():
 
 def create_returns_summary_table(data):
     try:
-        # First try parsing with default format
+        # Convert dates to datetime
         data['Return request date'] = pd.to_datetime(data['Return request date'], errors='coerce')
-        
-        # If we have any NaT (Not a Time) values, try common date formats
-        if data['Return request date'].isna().any():
-            # Try different date formats
-            date_formats = ['%Y-%m-%d', '%m/%d/%Y', '%d/%m/%Y', '%Y/%m/%d', 
-                          '%m-%d-%Y', '%d-%m-%Y', '%Y.%m.%d', '%d.%m.%Y']
-            
-            for date_format in date_formats:
-                # Try to parse dates that are still NaT
-                mask = data['Return request date'].isna()
-                data.loc[mask, 'Return request date'] = pd.to_datetime(
-                    data.loc[mask, 'Return request date'],
-                    format=date_format,
-                    errors='coerce'
-                )
-        
-        # Drop rows where we couldn't parse the date
         data = data.dropna(subset=['Return request date'])
         
-        # Extract year and month
+        # Extract year and month number
         data['Year'] = data['Return request date'].dt.year
+        data['Month_Num'] = data['Return request date'].dt.month
         
-        # Create a month mapping to ensure consistency
-        month_mapping = {
+        # Create the summary by year and month
+        summary = data.groupby(['Year', 'Month_Num'])['Return quantity'].sum().reset_index()
+        
+        # Create a pivot table
+        pivot_table = pd.pivot_table(
+            summary,
+            values='Return quantity',
+            index='Year',
+            columns='Month_Num',
+            fill_value=0
+        )
+        
+        # Rename columns to month names
+        month_names = {
             1: 'Jan', 2: 'Feb', 3: 'Mar', 4: 'Apr', 5: 'May', 6: 'Jun',
             7: 'Jul', 8: 'Aug', 9: 'Sep', 10: 'Oct', 11: 'Nov', 12: 'Dec'
         }
+        pivot_table = pivot_table.rename(columns=month_names)
         
-        # Use the numeric month to map to consistent month names
-        data['Month'] = data['Return request date'].dt.month.map(month_mapping)
-
-        # Define all months in order
-        all_months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 
-                     'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+        # Ensure all months are present
+        for month in month_names.values():
+            if month not in pivot_table.columns:
+                pivot_table[month] = 0
         
-        # Group by year and month, summing the 'Return quantity'
-        summary = data.groupby(['Year', 'Month'])['Return quantity'].sum().unstack(fill_value=0)
+        # Sort columns by month order
+        pivot_table = pivot_table[list(month_names.values())]
         
-        # Ensure all months are present with 0 if missing
-        for month in all_months:
-            if month not in summary.columns:
-                summary[month] = 0
+        # Convert index to strings
+        pivot_table.index = pivot_table.index.astype(str)
         
-        # Reorder columns to have months in calendar order
-        summary = summary[all_months]
-
-        # Format the year to avoid commas
-        summary.index = summary.index.map(str)  # Convert index to string to avoid formatting issues
-        
-        # Debug information
-        st.write("Debug - Months in data:", sorted(data['Month'].unique()))
-        st.write("Debug - Columns in summary:", sorted(summary.columns))
-        
-        return summary
+        return pivot_table
         
     except Exception as e:
         st.error(f"Error processing dates: {str(e)}")
-        # Return an empty DataFrame with the correct structure if there's an error
+        # Return an empty DataFrame with the correct structure
         empty_summary = pd.DataFrame(0, 
             index=['2023', '2024'],
             columns=['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 
@@ -190,25 +173,24 @@ if selected == 'Home':
     # Plot line graph with Plotly
     st.subheader("Returns Over Time")
     
-    # Prepare data for plotting
-    plot_data = returns_summary_table.copy()
-    
-    # Debug information
-    st.write("Debug - Data being plotted:")
-    st.write(plot_data)
+    # Convert the data for plotting
+    plot_df = returns_summary_table.reset_index()
+    plot_df = pd.melt(plot_df, id_vars=['Year'], var_name='Month', value_name='Returns')
     
     # Create the line graph
-    fig = px.line(plot_data.T, 
-                  labels={'value': 'Return Quantity', 'index': 'Month'}, 
-                  title='Returns Over Time',
-                  markers=True)
+    fig = px.line(
+        plot_df,
+        x='Month',
+        y='Returns',
+        color='Year',
+        title='Returns Over Time',
+        markers=True
+    )
     
-    # Update trace colors and ensure both years are shown
-    for year in plot_data.index:
-        color = 'green' if year == '2023' else 'red'
-        fig.update_traces(line=dict(color=color), selector=dict(name=year))
+    # Customize the graph
+    fig.update_traces(line=dict(color='green'), selector=dict(name='2023'))
+    fig.update_traces(line=dict(color='red'), selector=dict(name='2024'))
     
-    # Update layout for better visibility
     fig.update_layout(
         xaxis_title="Month",
         yaxis_title="Return Quantity",
