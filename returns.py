@@ -65,7 +65,15 @@ def create_returns_summary_table(data):
         
         # Extract year and month
         data['Year'] = data['Return request date'].dt.year
-        data['Month'] = data['Return request date'].dt.strftime('%b')
+        
+        # Create a month mapping to ensure consistency
+        month_mapping = {
+            1: 'Jan', 2: 'Feb', 3: 'Mar', 4: 'Apr', 5: 'May', 6: 'Jun',
+            7: 'Jul', 8: 'Aug', 9: 'Sep', 10: 'Oct', 11: 'Nov', 12: 'Dec'
+        }
+        
+        # Use the numeric month to map to consistent month names
+        data['Month'] = data['Return request date'].dt.month.map(month_mapping)
 
         # Define all months in order
         all_months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 
@@ -84,6 +92,10 @@ def create_returns_summary_table(data):
 
         # Format the year to avoid commas
         summary.index = summary.index.map(str)  # Convert index to string to avoid formatting issues
+        
+        # Debug information
+        st.write("Debug - Months in data:", sorted(data['Month'].unique()))
+        st.write("Debug - Columns in summary:", sorted(summary.columns))
         
         return summary
         
@@ -180,6 +192,10 @@ if selected == 'Home':
     
     # Prepare data for plotting
     plot_data = returns_summary_table.copy()
+    
+    # Debug information
+    st.write("Debug - Data being plotted:")
+    st.write(plot_data)
     
     # Create the line graph
     fig = px.line(plot_data.T, 
