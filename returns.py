@@ -203,36 +203,18 @@ if selected == 'Home':
 
     st.title("Returns Summary Table")
 
-    # Plot line graph with Plotly
+    # Use Streamlit's line chart instead of Plotly
     st.subheader("Returns Over Time")
     
     # Convert the data for plotting
     plot_df = returns_summary_table.reset_index()
     plot_df = pd.melt(plot_df, id_vars=['Year'], var_name='Month', value_name='Returns')
     
-    # Create the line graph
-    fig = px.line(
-        plot_df,
-        x='Month',
-        y='Returns',
-        color='Year',
-        title='Returns Over Time',
-        markers=True
-    )
+    # Pivot the data to have 'Year' as columns
+    plot_df_pivot = plot_df.pivot(index='Month', columns='Year', values='Returns')
     
-    # Customize the graph
-    fig.update_traces(line=dict(color='green'), selector=dict(name='2023'))
-    fig.update_traces(line=dict(color='red'), selector=dict(name='2024'))
-    
-    fig.update_layout(
-        xaxis_title="Month",
-        yaxis_title="Return Quantity",
-        legend_title="Year",
-        hovermode='x unified'
-    )
-    
-    # Display the plot
-    st.plotly_chart(fig, use_container_width=True)
+    # Use Streamlit's line chart
+    st.line_chart(plot_df_pivot)
 
     # Display monthly breakdown table
     st.subheader("Monthly Returns Breakdown")
