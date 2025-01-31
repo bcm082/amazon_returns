@@ -36,6 +36,9 @@ def load_all_returns_data():
     data_frames = []
     for file in returns_files:
         df = load_data(file, delimiter='\t')
+        # Debug: Output the raw data loaded
+        st.write(f"Debug - Loaded data from {file}:")
+        st.write(df.head())
         data_frames.append(df)
     
     # Combine all data frames
@@ -108,6 +111,9 @@ def load_returns_data_2024():
     data_frames = []
     for file in returns_files:
         df = load_data(os.path.join(returns_dir, file), delimiter='\t')
+        # Debug: Output the raw data loaded
+        st.write(f"Debug - Loaded data from {file}:")
+        st.write(df.head())
         data_frames.append(df)
     
     if data_frames:
@@ -122,6 +128,9 @@ def load_sales_data_2024():
     data_frames = []
     for file in sales_files:
         df = load_data(os.path.join(sales_dir, file), delimiter='\t')
+        # Debug: Output the raw data loaded
+        st.write(f"Debug - Loaded data from {file}:")
+        st.write(df.head())
         data_frames.append(df)
     
     if data_frames:
