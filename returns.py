@@ -203,12 +203,9 @@ if selected == 'Home':
 
     st.title("Returns Summary Table")
 
-    # Plot line graph with Plotly
-    st.subheader("Returns Over Time")
-    
-    # Convert the data for plotting
-    plot_df = returns_summary_table.reset_index()
-    plot_df = pd.melt(plot_df, id_vars=['Year'], var_name='Month', value_name='Returns')
+    # Convert the data for plotting using stack
+    plot_df = returns_summary_table.stack().reset_index()
+    plot_df.columns = ['Year', 'Month', 'Returns']
     
     # Create the line graph
     fig = px.line(
