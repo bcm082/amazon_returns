@@ -17,40 +17,29 @@ def list_files(directory, file_extension):
 
 @st.cache_data
 def load_sales_data(year):
-    sales_dir = f'Data/Sales/{year}/'
-    sales_files = list_files(sales_dir, '.txt')
-    
-    # Load and combine all sales files
-    data_frames = []
-    for file in sales_files:
-        df = load_data(os.path.join(sales_dir, file), delimiter='\t')
+    file_path = os.path.join('Data/Sales', f'Sales_{year}.csv')
+    if os.path.exists(file_path):
+        df = load_data(file_path, delimiter=',')
         # Select only needed columns immediately to reduce memory usage
         df = df[['asin', 'sku', 'product-name', 'quantity']]
-        data_frames.append(df)
-    
-    combined_df = pd.concat(data_frames, ignore_index=True)
-    
-    # Convert strings to lowercase for case-insensitive search
-    combined_df['asin_lower'] = combined_df['asin'].str.lower()
-    combined_df['sku_lower'] = combined_df['sku'].str.lower()
-    combined_df['product_name_lower'] = combined_df['product-name'].str.lower()
-    
-    return combined_df
+        
+        # Convert strings to lowercase for case-insensitive search
+        df['asin_lower'] = df['asin'].str.lower()
+        df['sku_lower'] = df['sku'].str.lower()
+        df['product_name_lower'] = df['product-name'].str.lower()
+        
+        return df
+    return pd.DataFrame()
 
 @st.cache_data
 def load_returns_data(year):
-    returns_dir = f'Data/Returns/{year}/'
-    returns_files = list_files(returns_dir, '.tsv')
-    
-    # Load and combine all returns files
-    data_frames = []
-    for file in returns_files:
-        df = load_data(os.path.join(returns_dir, file), delimiter='\t')
+    file_path = os.path.join('Data/Returns', f'Returns_{year}.csv')
+    if os.path.exists(file_path):
+        df = load_data(file_path, delimiter=',')
         # Select only needed columns immediately
-        df = df[['ASIN', 'Return quantity', 'Return Reason']]
-        data_frames.append(df)
-    
-    return pd.concat(data_frames, ignore_index=True)
+        df = df[['ASIN', 'Merchant SKU', 'Return quantity', 'Return Reason']]
+        return df
+    return pd.DataFrame()
 
 @st.cache_data
 def process_returns_data(_returns_data, asin):

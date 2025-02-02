@@ -24,19 +24,15 @@ def list_files(directory, file_extension):
 @st.cache_data
 def load_all_returns_data():
     returns_dir = 'Data/Returns'
-    returns_files = []
-    
-    # Get all return files recursively
-    for root, _, files in os.walk(returns_dir):
-        for file in files:
-            if file.endswith('.tsv'):
-                returns_files.append(os.path.join(root, file))
+    returns_files = ['Returns_2023.csv', 'Returns_2024.csv']
     
     # Load and combine all returns files
     data_frames = []
     for file in returns_files:
-        df = load_data(file, delimiter='\t')
-        data_frames.append(df)
+        file_path = os.path.join(returns_dir, file)
+        if os.path.exists(file_path):
+            df = load_data(file_path, delimiter=',')
+            data_frames.append(df)
     
     # Combine all data frames
     if data_frames:
@@ -55,7 +51,7 @@ def create_returns_summary_table(data):
 
         # Convert dates to datetime
         try:
-            df['Return request date'] = pd.to_datetime(df['Return request date'], errors='coerce')
+            df['Return request date'] = pd.to_datetime(df['Return request date'])
             df = df.dropna(subset=['Return request date'])
         except Exception as e:
             st.error(f"Error converting dates: {str(e)}")
@@ -64,19 +60,19 @@ def create_returns_summary_table(data):
         # Create a new DataFrame with just the columns we need
         summary_data = pd.DataFrame({
             'Year': df['Return request date'].dt.year,
-            'Month_Num': df['Return request date'].dt.month,
+            'Month': df['Return request date'].dt.month,
             'Return quantity': df['Return quantity']
         })
 
-        # Create the summary by year and month
-        summary = summary_data.groupby(['Year', 'Month_Num'])['Return quantity'].sum().reset_index()
+        # Group by Year and Month and sum the return quantities
+        summary = summary_data.groupby(['Year', 'Month'])['Return quantity'].sum().reset_index()
 
         # Create a pivot table
         pivot_table = pd.pivot_table(
             summary,
             values='Return quantity',
             index='Year',
-            columns='Month_Num',
+            columns='Month',
             fill_value=0
         )
 
@@ -98,91 +94,123 @@ def create_returns_summary_table(data):
         # Convert index to strings
         pivot_table.index = pivot_table.index.astype(str)
 
-        return pivot_table
-    
-    except Exception as e:
-        st.error(f"Error processing dates: {str(e)}")
-        empty_summary = pd.DataFrame(0, 
-            index=['2023', '2024'],
-            columns=['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 
-                    'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+        # Create line graph
+        st.subheader("Monthly Returns Trend")
+        
+        # Convert pivot table to format suitable for plotting
+        plot_data = pivot_table.reset_index()
+        plot_data = pd.melt(plot_data, 
+                           id_vars=['Year'], 
+                           value_vars=list(month_names.values()),
+                           var_name='Month',
+                           value_name='Returns')
+        
+        # Create the line graph using plotly
+        fig = px.line(
+            plot_data,
+            x='Month',
+            y='Returns',
+            color='Year',
+            title='Returns by Month and Year',
+            markers=True
         )
-        return empty_summary
+
+        # Customize the layout
+        fig.update_layout(
+            xaxis_title="Month",
+            yaxis_title="Number of Returns",
+            hovermode='x unified',
+            xaxis=dict(
+                tickmode='array',
+                ticktext=list(month_names.values()),
+                tickvals=list(month_names.values())
+            ),
+            legend_title="Year",
+            showlegend=True
+        )
+
+        # Update line colors and styles
+        fig.update_traces(
+            line=dict(width=2),
+            marker=dict(size=8)
+        )
+        
+        # Set specific colors for each year
+        for trace in fig.data:
+            if trace.name == "2023":
+                trace.line.color = "rgb(0, 128, 0)"  # Green
+            elif trace.name == "2024":
+                trace.line.color = "rgb(220, 20, 60)"  # Crimson
+
+        # Display the graph
+        st.plotly_chart(fig, use_container_width=True)
+
+        # Display the table
+        st.subheader("Monthly Returns Breakdown")
+        st.dataframe(pivot_table.style.format("{:,.0f}"), use_container_width=True)
+
+        return pivot_table
+
+    except Exception as e:
+        st.error(f"Error creating summary table: {str(e)}")
+        return pd.DataFrame()
 
 @st.cache_data
 def load_returns_data_2024():
-    returns_dir = 'Data/Returns/2024'
-    returns_files = list_files(returns_dir, '.tsv')
-    
-    data_frames = []
-    for file in returns_files:
-        df = load_data(os.path.join(returns_dir, file), delimiter='\t')
-        data_frames.append(df)
-    
-    if data_frames:
-        return pd.concat(data_frames, ignore_index=True)
+    file_path = os.path.join('Data/Returns', 'Returns_2024.csv')
+    if os.path.exists(file_path):
+        return load_data(file_path, delimiter=',')
     return pd.DataFrame()
 
 @st.cache_data
 def load_sales_data_2024():
-    sales_dir = 'Data/Sales/2024'
-    sales_files = list_files(sales_dir, '.txt')
-    
-    data_frames = []
-    for file in sales_files:
-        df = load_data(os.path.join(sales_dir, file), delimiter='\t')
-        data_frames.append(df)
-    
-    if data_frames:
-        return pd.concat(data_frames, ignore_index=True)
+    file_path = os.path.join('Data/Sales', 'Sales_2024.csv')
+    if os.path.exists(file_path):
+        return load_data(file_path, delimiter=',')
     return pd.DataFrame()
 
 def create_top_returns_table(returns_data, sales_data):
-    # Extract relevant columns
-    returns_data = returns_data[['ASIN', 'Return quantity', 'Return Reason']]
-    sales_data = sales_data[['asin', 'sku', 'quantity']]
+    try:
+        if returns_data.empty or sales_data.empty:
+            return pd.DataFrame()
 
-    # Aggregate data
-    returns_agg = returns_data.groupby('ASIN').agg({
-        'Return quantity': 'sum',
-        'Return Reason': lambda x: x.value_counts().idxmax()  # Get the most common return reason
-    }).reset_index()
+        # Group returns by ASIN
+        returns_by_asin = returns_data.groupby('ASIN').agg({
+            'Return quantity': 'sum',
+            'Return Reason': lambda x: x.mode().iloc[0] if not x.empty else "No returns"
+        }).reset_index()
 
-    sales_agg = sales_data.groupby('asin').agg({'sku': 'first', 'quantity': 'sum'}).reset_index()
+        # Group sales by ASIN
+        sales_by_asin = sales_data.groupby('asin')['quantity'].sum().reset_index()
+        sales_by_asin.columns = ['ASIN', 'Total Sales']
 
-    # Merge datasets
-    merged_data = pd.merge(returns_agg, sales_agg, left_on='ASIN', right_on='asin', how='inner')
+        # Merge returns and sales data
+        merged_data = pd.merge(returns_by_asin, sales_by_asin, on='ASIN', how='left')
+        merged_data['Return Rate'] = (merged_data['Return quantity'] / merged_data['Total Sales'] * 100).round(2)
+        
+        # Sort by return quantity in descending order
+        top_returns = merged_data.nlargest(10, 'Return quantity')
+        
+        return top_returns
 
-    # Calculate percentage of returns
-    merged_data['Percentage of Returns'] = (merged_data['Return quantity'] / merged_data['quantity']) * 100
-
-    # Sort and select top 50
-    top_returns = merged_data.sort_values(by='Return quantity', ascending=False).head(50)
-
-    # Select relevant columns
-    top_returns = top_returns[['ASIN', 'sku', 'Return quantity', 'quantity', 'Percentage of Returns', 'Return Reason']]
-    top_returns.rename(columns={'quantity': 'Total Sold', 'Return Reason': 'Top Return Reason'}, inplace=True)
-
-    return top_returns
+    except Exception as e:
+        st.error(f"Error creating top returns table: {str(e)}")
+        return pd.DataFrame()
 
 def create_returns_reasons_table(returns_data):
-    # Group by Return Reason and calculate total returns and percentage
-    reasons_agg = returns_data.groupby('Return Reason').agg({
-        'Return quantity': 'sum'
-    }).reset_index()
+    try:
+        if returns_data.empty:
+            return pd.DataFrame()
 
-    # Calculate total returns
-    total_returns = reasons_agg['Return quantity'].sum()
-    reasons_agg['Percentage'] = (reasons_agg['Return quantity'] / total_returns) * 100
+        # Group by return reason and sum quantities
+        reasons_summary = returns_data.groupby('Return Reason')['Return quantity'].sum().reset_index()
+        reasons_summary = reasons_summary.sort_values('Return quantity', ascending=False)
+        
+        return reasons_summary
 
-    # Sort by Return Quantity
-    reasons_agg = reasons_agg.sort_values(by='Return quantity', ascending=False)
-
-    # Select relevant columns
-    reasons_table = reasons_agg[['Return Reason', 'Return quantity', 'Percentage']]
-    reasons_table.rename(columns={'Return quantity': 'Total returns'}, inplace=True)
-
-    return reasons_table
+    except Exception as e:
+        st.error(f"Error creating returns reasons table: {str(e)}")
+        return pd.DataFrame()
 
 # Initialize session state for page navigation
 if 'page' not in st.session_state:
@@ -201,43 +229,6 @@ if selected == 'Home':
     # Create summary table
     returns_summary_table = create_returns_summary_table(returns_data)
 
-    st.title("Returns Summary Table")
-
-    # Convert the data for plotting using stack
-    plot_df = returns_summary_table.stack().reset_index()
-    plot_df.columns = ['Year', 'Month', 'Returns']
-    
-    # Create the line graph
-    fig = px.line(
-        plot_df,
-        x='Month',
-        y='Returns',
-        color='Year',
-        title='Returns Over Time',
-        markers=True
-    )
-    
-    # Customize the graph
-    fig.update_traces(line=dict(color='green'), selector=dict(name='2023'))
-    fig.update_traces(line=dict(color='red'), selector=dict(name='2024'))
-    
-    fig.update_layout(
-        xaxis_title="Month",
-        yaxis_title="Return Quantity",
-        legend_title="Year",
-        hovermode='x unified'
-    )
-    
-    # Display the plot
-    st.plotly_chart(fig, use_container_width=True)
-
-    # Display monthly breakdown table
-    st.subheader("Monthly Returns Breakdown")
-    st.dataframe(
-        returns_summary_table.style.format(precision=0, na_rep='0'),
-        use_container_width=True
-    )
-
     # Load data for top returns table
     returns_data_2024 = load_returns_data_2024()
     sales_data_2024 = load_sales_data_2024()
@@ -245,14 +236,14 @@ if selected == 'Home':
     # Create top returns table
     top_returns_table = create_top_returns_table(returns_data_2024, sales_data_2024)
 
-    st.title("Top 50 Returned SKUs of 2024")
+    st.title("Top 10 Returned SKUs of 2024")
 
     # Reset index to hide it
     top_returns_table = top_returns_table.reset_index(drop=True)
 
     # Format the table
     formatted_table = top_returns_table.style.format({
-        'Percentage of Returns': '{:.2f}%'
+        'Return Rate': '{:.2f}%'
     })
 
     # Display the table
@@ -262,12 +253,7 @@ if selected == 'Home':
     returns_reasons_table = create_returns_reasons_table(returns_data_2024)
     st.title("Returns Reasons Table")
 
-    # Format the percentage column
-    formatted_reasons_table = returns_reasons_table.style.format({
-        'Percentage': '{:.2f}%'
-    })
-
-    st.dataframe(formatted_reasons_table, hide_index=True)
+    st.dataframe(returns_reasons_table, hide_index=True)
 
 elif selected == 'Search':
     search_products.search_products_page()  # Call the function from search_products
