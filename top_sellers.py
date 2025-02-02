@@ -16,8 +16,8 @@ def list_files(directory, file_extension):
         return []
 
 @st.cache_data
-def load_sales_data():
-    file_path = os.path.join('Data/Sales', 'Sales_2024.csv')
+def load_sales_data(year):
+    file_path = os.path.join('Data/Sales', f'Sales_{year}.csv')
     if not os.path.exists(file_path):
         return pd.DataFrame()
     
@@ -26,15 +26,11 @@ def load_sales_data():
     # Select only needed columns immediately to reduce memory usage
     df = df[['asin', 'sku', 'quantity']]
     
-    # Pre-aggregate sales data
-    sales_by_sku = df.groupby(['sku', 'asin'])['quantity'].sum().reset_index()
-    sales_by_sku.columns = ['Merchant SKU', 'ASIN', 'Total Sold 2024']
-    
-    return sales_by_sku
+    return df
 
 @st.cache_data
-def load_returns_data():
-    file_path = os.path.join('Data/Returns', 'Returns_2024.csv')
+def load_returns_data(year):
+    file_path = os.path.join('Data/Returns', f'Returns_{year}.csv')
     if not os.path.exists(file_path):
         return pd.DataFrame(), pd.DataFrame()
     
@@ -43,64 +39,71 @@ def load_returns_data():
     # Select only needed columns
     df = df[['ASIN', 'Merchant SKU', 'Return quantity', 'Return Reason']]
     
-    # Pre-calculate returns by SKU
-    returns_by_sku = df.groupby('Merchant SKU').agg({
-        'Return quantity': 'sum',
-        'Return Reason': lambda x: pd.Series.mode(x)[0] if not x.empty else "No Returns"
-    }).reset_index()
-    
-    returns_by_sku.columns = ['Merchant SKU', 'Total Returns 2024', 'Top Return Reason']
-    
-    return returns_by_sku, df
-
-@st.cache_data
-def create_top_sellers_table():
-    # Load pre-aggregated data
-    sales_by_sku = load_sales_data()
-    returns_by_sku, _ = load_returns_data()
-    
-    # Merge sales and returns data
-    merged_data = pd.merge(sales_by_sku, returns_by_sku, on='Merchant SKU', how='left')
-    
-    # Fill missing values
-    merged_data['Total Returns 2024'] = merged_data['Total Returns 2024'].fillna(0)
-    merged_data['Top Return Reason'] = merged_data['Top Return Reason'].fillna("No Returns")
-    
-    # Calculate return rate
-    merged_data['Return Rate'] = (merged_data['Total Returns 2024'] / merged_data['Total Sold 2024'] * 100)
-    
-    # Get top 500 sellers
-    top_sellers = merged_data.nlargest(500, 'Total Sold 2024')
-    
-    # Format return rate
-    top_sellers['Return Rate'] = top_sellers['Return Rate'].apply(lambda x: f'{x:.2f}%')
-    
-    # Optimize column order for display
-    top_sellers = top_sellers[[
-        'Merchant SKU', 'ASIN', 'Total Sold 2024', 'Total Returns 2024', 
-        'Return Rate', 'Top Return Reason'
-    ]]
-    
-    return top_sellers
+    return df
 
 def top_sellers_page():
     st.title("Top 500 Sellers of 2024")
-    
-    with st.spinner('Loading top sellers data...'):
-        # Create and display the top sellers table
-        top_sellers = create_top_sellers_table()
-        
-        # Add description
-        st.write("This table shows the 500 most sold SKUs in 2024, along with their returns data and top return reasons.")
-        
-        # Display the table with improved formatting
-        st.dataframe(
-            top_sellers,
-            hide_index=True,
-            column_config={
-                "Total Sold 2024": st.column_config.NumberColumn(format="%d"),
-                "Total Returns 2024": st.column_config.NumberColumn(format="%d"),
-                "Return Rate": st.column_config.TextColumn(width="small"),
-                "Top Return Reason": st.column_config.TextColumn(width="medium")
-            }
-        )
+
+    # Load 2024 data
+    sales_data = load_sales_data(2024)
+    returns_data = load_returns_data(2024)
+
+    # Group sales data by ASIN
+    sales_summary = sales_data.groupby('asin').agg({
+        'sku': lambda x: ', '.join(sorted(set(x))),  # List all unique SKUs
+        'quantity': 'sum'  # Sum quantities
+    }).reset_index()
+
+    # Group returns data by ASIN
+    returns_summary = returns_data.groupby('ASIN').agg({
+        'Merchant SKU': lambda x: ', '.join(sorted(set(x))),  # List all unique SKUs
+        'Return quantity': 'sum',  # Sum return quantities
+        'Return Reason': lambda x: x.mode().iloc[0] if not x.empty else "No returns"  # Most common return reason
+    }).reset_index()
+
+    # Merge sales and returns data
+    merged_data = pd.merge(
+        sales_summary,
+        returns_summary,
+        left_on='asin',
+        right_on='ASIN',
+        how='left'
+    )
+
+    # Fill NaN values
+    merged_data = merged_data.fillna({
+        'Return quantity': 0,
+        'Return Reason': 'No returns'
+    })
+
+    # Use sales SKUs if available, otherwise use returns SKUs
+    merged_data['SKUs'] = merged_data.apply(
+        lambda row: row['sku'] if pd.notna(row.get('sku')) else row.get('Merchant SKU', ''),
+        axis=1
+    )
+
+    # Calculate return rate
+    merged_data['Return Rate'] = (merged_data['Return quantity'] / merged_data['quantity'] * 100).round(2)
+
+    # Sort by quantity sold (descending) and take top 500
+    top_500 = merged_data.nlargest(500, 'quantity')
+
+    # Create display DataFrame
+    display_data = pd.DataFrame({
+        'ASIN': top_500['asin'],
+        'SKUs': top_500['SKUs'],
+        'Units Sold': top_500['quantity'].astype(int),
+        'Returns': top_500['Return quantity'].astype(int),
+        'Return Rate': top_500['Return Rate'],
+        'Top Return Reason': top_500['Return Reason']
+    })
+
+    # Format numbers with commas
+    formatted_data = display_data.style.format({
+        'Units Sold': lambda x: f"{int(x):,}",
+        'Returns': lambda x: f"{int(x):,}",
+        'Return Rate': '{:.2f}%'
+    })
+
+    # Display the table
+    st.dataframe(formatted_data, hide_index=True)
