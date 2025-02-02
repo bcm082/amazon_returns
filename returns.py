@@ -67,14 +67,15 @@ def create_returns_summary_table(data):
         # Group by Year and Month and sum the return quantities
         summary = summary_data.groupby(['Year', 'Month'])['Return quantity'].sum().reset_index()
 
-        # Create a pivot table
+        # Create a pivot table for returns
         pivot_table = pd.pivot_table(
             summary,
             values='Return quantity',
             index='Year',
             columns='Month',
-            fill_value=0
-        )
+            fill_value=0,
+            aggfunc='sum'
+        ).astype(int)  # Convert to integers
 
         # Rename columns to month names
         month_names = {
@@ -91,6 +92,30 @@ def create_returns_summary_table(data):
         # Sort columns by month order
         pivot_table = pivot_table[list(month_names.values())]
 
+        # Load sales data for both years
+        sales_data = []
+        for year in pivot_table.index:
+            file_path = os.path.join('Data/Sales', f'Sales_{year}.csv')
+            if os.path.exists(file_path):
+                year_sales = pd.read_csv(file_path)
+                year_sales['purchase-date'] = pd.to_datetime(year_sales['purchase-date'])
+                year_sales['year'] = year_sales['purchase-date'].dt.year
+                sales_data.append(year_sales)
+
+        if sales_data:
+            # Combine sales data
+            sales_df = pd.concat(sales_data)
+            
+            # Calculate yearly totals for both returns and sales
+            yearly_returns = pivot_table.sum(axis=1)
+            yearly_sales = sales_df.groupby('year')['quantity'].sum()
+            
+            # Add Total Units column
+            pivot_table['Total Units'] = yearly_sales.astype(int)  # Convert to integers
+            
+            # Calculate and add return rate
+            pivot_table['Return Rate'] = (yearly_returns / yearly_sales * 100).round(2)
+
         # Convert index to strings
         pivot_table.index = pivot_table.index.astype(str)
 
@@ -99,9 +124,10 @@ def create_returns_summary_table(data):
         
         # Convert pivot table to format suitable for plotting
         plot_data = pivot_table.reset_index()
+        plot_columns = list(month_names.values())  # Only use month columns for plotting
         plot_data = pd.melt(plot_data, 
                            id_vars=['Year'], 
-                           value_vars=list(month_names.values()),
+                           value_vars=plot_columns,
                            var_name='Month',
                            value_name='Returns')
         
@@ -145,9 +171,23 @@ def create_returns_summary_table(data):
         # Display the graph
         st.plotly_chart(fig, use_container_width=True)
 
-        # Display the table
+        # Display the table with custom formatting
         st.subheader("Monthly Returns Breakdown")
-        st.dataframe(pivot_table.style.format("{:,.0f}"), use_container_width=True)
+        
+        # Format all numeric columns except Return Rate
+        numeric_cols = list(month_names.values()) + ['Total Units']
+        
+        # Create formatter dictionary for all columns
+        formatters = {}
+        for col in numeric_cols:
+            formatters[col] = lambda x: f"{int(x):,}"
+        formatters['Return Rate'] = lambda x: f"{x:.2f}%"
+        
+        # Apply formatting
+        styled_table = pivot_table.style.format(formatters)
+        
+        # Display the table
+        st.dataframe(styled_table, use_container_width=True)
 
         return pivot_table
 
