@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import os
+import numpy as np
 
 @st.cache_data
 def load_data(file_path, delimiter):
@@ -49,100 +50,195 @@ def process_returns_data(_returns_data, asin):
     reasons = filtered_returns.groupby('Return Reason')['Return quantity'].sum()
     return return_quantity, reasons
 
+def clean_sku_string(sku):
+    """Remove FBA from SKU if present and return the clean version"""
+    return sku.replace('-FBA-', '-')
+
+def get_unique_skus(skus):
+    """Get unique SKUs removing FBA versions when non-FBA version exists"""
+    # Split SKUs into a list and clean them
+    sku_list = [sku.strip() for sku in skus.split(',')]
+    
+    # Create a dictionary to store clean SKUs and their original versions
+    clean_to_original = {}
+    for sku in sku_list:
+        clean = clean_sku_string(sku)
+        # If we haven't seen this clean SKU before, or if this is a non-FBA version
+        if clean not in clean_to_original or '-FBA-' not in sku:
+            clean_to_original[clean] = sku
+    
+    # Return sorted unique SKUs
+    return ', '.join(sorted(clean_to_original.keys()))
+
 def search_products_page():
     st.title("Search Products")
 
-    # Create a search bar
-    search_query = st.text_input("Search for a product (ASIN, SKU, or Product Name)", "")
+    # Single search bar with unique key
+    search_query = st.text_input("Search by ASIN or SKU", "", key="product_search")
 
     if search_query:
-        # Convert search query to lowercase once
-        search_query_lower = search_query.lower()
-        
         # Load data with caching
         sales_data_2023 = load_sales_data(2023)
         sales_data_2024 = load_sales_data(2024)
         returns_data_2023 = load_returns_data(2023)
         returns_data_2024 = load_returns_data(2024)
 
-        # Optimized search logic using pre-computed lowercase columns
-        search_results_2023 = sales_data_2023[
-            (sales_data_2023['asin_lower'].str.contains(search_query_lower, na=False)) |
-            (sales_data_2023['sku_lower'].str.contains(search_query_lower, na=False)) |
-            (sales_data_2023['product_name_lower'].str.contains(search_query_lower, na=False))
-        ]
+        # Add year column to track data source
+        sales_data_2023['year'] = 2023
+        sales_data_2024['year'] = 2024
+        returns_data_2023['year'] = 2023
+        returns_data_2024['year'] = 2024
 
-        search_results_2024 = sales_data_2024[
-            (sales_data_2024['asin_lower'].str.contains(search_query_lower, na=False)) |
-            (sales_data_2024['sku_lower'].str.contains(search_query_lower, na=False)) |
-            (sales_data_2024['product_name_lower'].str.contains(search_query_lower, na=False))
-        ]
+        # Combine data from both years
+        sales_data = pd.concat([sales_data_2023, sales_data_2024])
+        returns_data = pd.concat([returns_data_2023, returns_data_2024])
 
-        # Calculate metrics
-        if not search_results_2023.empty or not search_results_2024.empty:
-            # Get unique products
-            unique_products_2023 = search_results_2023[['asin', 'sku']].drop_duplicates()
-            unique_products_2024 = search_results_2024[['asin', 'sku']].drop_duplicates()
-            unique_products = pd.concat([unique_products_2023, unique_products_2024]).drop_duplicates()
+        # Convert search query to uppercase
+        search_query_upper = search_query.upper()
 
-            # Display first section
-            st.subheader("Product Identification")
-            id_table = pd.DataFrame({
-                'ASIN': unique_products['asin'],
-                'Amazon Link': unique_products['asin'].apply(lambda x: f'https://www.amazon.com/dp/{x}'),
-                'SKU': unique_products['sku']
+        # First try ASIN exact match
+        sales_filtered = sales_data[sales_data['asin'].str.upper() == search_query_upper]
+        returns_filtered = returns_data[returns_data['ASIN'].str.upper() == search_query_upper]
+
+        # If no ASIN match, try SKU partial match
+        if sales_filtered.empty and returns_filtered.empty:
+            # Find ASINs with matching SKUs in sales data
+            matching_sales_asins = sales_data[
+                sales_data['sku'].str.upper().str.contains(search_query_upper, na=False)
+            ]['asin'].unique()
+
+            # Find ASINs with matching SKUs in returns data
+            matching_returns_asins = returns_data[
+                returns_data['Merchant SKU'].str.upper().str.contains(search_query_upper, na=False)
+            ]['ASIN'].unique()
+
+            # Combine matching ASINs
+            matching_asins = list(set(matching_sales_asins) | set(matching_returns_asins))
+
+            # Get all data for matching ASINs
+            if matching_asins:
+                sales_filtered = sales_data[sales_data['asin'].isin(matching_asins)]
+                returns_filtered = returns_data[returns_data['ASIN'].isin(matching_asins)]
+
+        if not sales_filtered.empty or not returns_filtered.empty:
+            # Group sales data by ASIN and year
+            sales_summary = sales_filtered.groupby(['asin', 'year']).agg({
+                'sku': lambda x: ', '.join(sorted(set(x))),  # List all unique SKUs
+                'quantity': 'sum'  # Sum all quantities
+            }).reset_index()
+
+            # Group returns data by ASIN and year
+            returns_summary = returns_filtered.groupby(['ASIN', 'year']).agg({
+                'Merchant SKU': lambda x: ', '.join(sorted(set(x))),  # List all unique SKUs
+                'Return quantity': 'sum',  # Sum all return quantities
+                'Return Reason': lambda x: x.mode().iloc[0] if not x.empty else "No returns"  # Most common return reason
+            }).reset_index()
+
+            # Merge sales and returns data
+            merged_data = pd.merge(
+                sales_summary, 
+                returns_summary, 
+                left_on=['asin', 'year'], 
+                right_on=['ASIN', 'year'], 
+                how='outer'
+            )
+
+            # Clean up merged data
+            merged_data = merged_data.fillna({
+                'Return quantity': 0,
+                'quantity': 0,
+                'Return Reason': 'No returns'
             })
-            st.dataframe(id_table, hide_index=True)
 
-            # Prepare yearly data more efficiently
-            yearly_data = []
-            for _, row in unique_products.iterrows():
-                asin = row['asin']
-                sku = row['sku']
-                
-                # Process returns data with caching
-                returns_2023, reasons_2023 = process_returns_data(returns_data_2023, asin)
-                returns_2024, reasons_2024 = process_returns_data(returns_data_2024, asin)
-                
-                # Process sales data
-                sales_2023 = search_results_2023[search_results_2023['asin'] == asin]['quantity'].sum()
-                sales_2024 = search_results_2024[search_results_2024['asin'] == asin]['quantity'].sum()
-                
-                return_rate_2023 = (returns_2023 / sales_2023 * 100) if sales_2023 > 0 else 0
-                return_rate_2024 = (returns_2024 / sales_2024 * 100) if sales_2024 > 0 else 0
-                
-                yearly_data.extend([
-                    {'SKU': sku, 'Year': '2023', 'Returns': returns_2023, 'Sales': sales_2023, 'Return Rate': f'{return_rate_2023:.2f}%'},
-                    {'SKU': sku, 'Year': '2024', 'Returns': returns_2024, 'Sales': sales_2024, 'Return Rate': f'{return_rate_2024:.2f}%'}
-                ])
+            # Use the sales SKUs if available, otherwise use returns SKUs
+            merged_data['SKUs'] = merged_data.apply(
+                lambda row: row['sku'] if pd.notna(row.get('sku')) else row.get('Merchant SKU', ''),
+                axis=1
+            )
 
-            st.subheader("Yearly Data")
-            yearly_data_table = pd.DataFrame(yearly_data)
-            st.dataframe(yearly_data_table, hide_index=True)
+            # Calculate return rate per year
+            merged_data['Return Rate'] = (merged_data['Return quantity'] / merged_data['quantity'] * 100).round(2)
 
-            # Display return reasons more efficiently
-            all_reasons = []
-            for _, row in unique_products.iterrows():
-                asin = row['asin']
-                sku = row['sku']
-                
-                _, reasons_2023 = process_returns_data(returns_data_2023, asin)
-                _, reasons_2024 = process_returns_data(returns_data_2024, asin)
-                
-                # Combine reasons for both years
-                all_reasons_product = pd.DataFrame({
-                    'SKU': sku,
-                    'Return Reason': reasons_2023.index.union(reasons_2024.index),
-                })
-                all_reasons_product['Return quantity 2023 Count'] = all_reasons_product['Return Reason'].map(reasons_2023).fillna(0)
-                all_reasons_product['Return quantity 2024 Count'] = all_reasons_product['Return Reason'].map(reasons_2024).fillna(0)
-                all_reasons.append(all_reasons_product)
+            # Create separate DataFrames for each year
+            data_2023 = merged_data[merged_data['year'] == 2023].copy()
+            data_2024 = merged_data[merged_data['year'] == 2024].copy()
+
+            # Format the display data for each year
+            display_2023 = pd.DataFrame({
+                'ASIN': data_2023['asin'],
+                'SKUs': data_2023['SKUs'],
+                'Units Sold': data_2023['quantity'].astype(int),
+                'Returns': data_2023['Return quantity'].astype(int),
+                'Return Rate': data_2023['Return Rate'],
+                'Top Return Reason': data_2023['Return Reason']
+            }) if not data_2023.empty else pd.DataFrame()
+
+            display_2024 = pd.DataFrame({
+                'ASIN': data_2024['asin'],
+                'SKUs': data_2024['SKUs'],
+                'Units Sold': data_2024['quantity'].astype(int),
+                'Returns': data_2024['Return quantity'].astype(int),
+                'Return Rate': data_2024['Return Rate'],
+                'Top Return Reason': data_2024['Return Reason']
+            }) if not data_2024.empty else pd.DataFrame()
+
+            # Show summary statistics first
+            st.subheader("Summary")
             
-            if all_reasons:
-                reasons_table = pd.concat(all_reasons, ignore_index=True)
-                reasons_table_sorted = reasons_table.sort_values(by=['SKU', 'Return quantity 2024 Count'], ascending=[True, False])
-                st.dataframe(reasons_table_sorted, hide_index=True)
+            # Calculate totals for both years
+            total_units_2023 = display_2023['Units Sold'].sum() if not display_2023.empty else 0
+            total_returns_2023 = display_2023['Returns'].sum() if not display_2023.empty else 0
+            total_units_2024 = display_2024['Units Sold'].sum() if not display_2024.empty else 0
+            total_returns_2024 = display_2024['Returns'].sum() if not display_2024.empty else 0
+            
+            # Calculate return rates
+            return_rate_2023 = (total_returns_2023 / total_units_2023 * 100) if total_units_2023 > 0 else 0
+            return_rate_2024 = (total_returns_2024 / total_units_2024 * 100) if total_units_2024 > 0 else 0
+
+            # Display metrics for each year
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                st.markdown("### 2024")
+                col11, col12, col13 = st.columns(3)
+                with col11:
+                    st.metric("Units Sold", f"{int(total_units_2024):,}")
+                with col12:
+                    st.metric("Returns", f"{int(total_returns_2024):,}")
+                with col13:
+                    st.metric("Return Rate", f"{return_rate_2024:.2f}%")
+                    
+            with col2:
+                st.markdown("### 2023")
+                col21, col22, col23 = st.columns(3)
+                with col21:
+                    st.metric("Units Sold", f"{int(total_units_2023):,}")
+                with col22:
+                    st.metric("Returns", f"{int(total_returns_2023):,}")
+                with col23:
+                    st.metric("Return Rate", f"{return_rate_2023:.2f}%")
+
+            # Display 2024 results first
+            if not display_2024.empty:
+                st.subheader("2024 Results")
+                formatted_2024 = display_2024.style.format({
+                    'Units Sold': lambda x: f"{int(x):,}",
+                    'Returns': lambda x: f"{int(x):,}",
+                    'Return Rate': '{:.2f}%'
+                })
+                st.dataframe(formatted_2024, hide_index=True)
+
+            # Then display 2023 results
+            if not display_2023.empty:
+                st.subheader("2023 Results")
+                formatted_2023 = display_2023.style.format({
+                    'Units Sold': lambda x: f"{int(x):,}",
+                    'Returns': lambda x: f"{int(x):,}",
+                    'Return Rate': '{:.2f}%'
+                })
+                st.dataframe(formatted_2023, hide_index=True)
+
         else:
-            st.write("No results found for the search query.")
-    else:
-        st.write("Enter a product name, ASIN, or SKU to search.")
+            st.info("No products found matching your search criteria.")
+
+search_products_page()
