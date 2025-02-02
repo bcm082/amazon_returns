@@ -214,24 +214,49 @@ def create_top_returns_table(returns_data, sales_data):
         if returns_data.empty or sales_data.empty:
             return pd.DataFrame()
 
-        # Group returns by ASIN
-        returns_by_asin = returns_data.groupby('ASIN').agg({
+        # Group returns by ASIN and Merchant SKU
+        returns_by_asin = returns_data.groupby(['ASIN', 'Merchant SKU']).agg({
             'Return quantity': 'sum',
             'Return Reason': lambda x: x.mode().iloc[0] if not x.empty else "No returns"
         }).reset_index()
 
         # Group sales by ASIN
         sales_by_asin = sales_data.groupby('asin')['quantity'].sum().reset_index()
-        sales_by_asin.columns = ['ASIN', 'Total Sales']
+        sales_by_asin.columns = ['ASIN', 'Units Sold']
+        
+        # Convert to integers
+        sales_by_asin['Units Sold'] = sales_by_asin['Units Sold'].astype(int)
 
         # Merge returns and sales data
         merged_data = pd.merge(returns_by_asin, sales_by_asin, on='ASIN', how='left')
-        merged_data['Return Rate'] = (merged_data['Return quantity'] / merged_data['Total Sales'] * 100).round(2)
         
-        # Sort by return quantity in descending order
-        top_returns = merged_data.nlargest(10, 'Return quantity')
+        # Calculate return rate
+        merged_data['Return Rate'] = (merged_data['Return quantity'] / merged_data['Units Sold'] * 100).round(2)
         
-        return top_returns
+        # Sort by return quantity in descending order and get top 50
+        top_returns = merged_data.nlargest(50, 'Return quantity')
+        
+        # Reorder and rename columns
+        top_returns = top_returns[[
+            'ASIN', 
+            'Merchant SKU',
+            'Return quantity',
+            'Units Sold',
+            'Return Rate',
+            'Return Reason'
+        ]]
+        
+        # Rename Return Reason column
+        top_returns = top_returns.rename(columns={'Return Reason': 'Top Return Reason'})
+        
+        # Format the table
+        formatted_table = top_returns.style.format({
+            'Return quantity': lambda x: f"{int(x):,}",
+            'Units Sold': lambda x: f"{int(x):,}",
+            'Return Rate': '{:.2f}%'
+        })
+        
+        return formatted_table
 
     except Exception as e:
         st.error(f"Error creating top returns table: {str(e)}")
@@ -276,18 +301,10 @@ if selected == 'Home':
     # Create top returns table
     top_returns_table = create_top_returns_table(returns_data_2024, sales_data_2024)
 
-    st.title("Top 10 Returned SKUs of 2024")
-
-    # Reset index to hide it
-    top_returns_table = top_returns_table.reset_index(drop=True)
-
-    # Format the table
-    formatted_table = top_returns_table.style.format({
-        'Return Rate': '{:.2f}%'
-    })
+    st.title("Top 50 Returned SKUs of 2024")
 
     # Display the table
-    st.dataframe(formatted_table, hide_index=True)
+    st.dataframe(top_returns_table, hide_index=True)
 
     # Create and display returns reasons table
     returns_reasons_table = create_returns_reasons_table(returns_data_2024)
