@@ -3,3 +3,4 @@ streamlit>=1.29.0
 matplotlib>=3.7.0
 plotly>=5.18.0
 streamlit-option-menu>=0.3.6
+watchdog>=3.0.0
