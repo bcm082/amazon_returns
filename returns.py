@@ -111,7 +111,7 @@ def create_returns_summary_table(data):
             yearly_sales = sales_df.groupby('year')['quantity'].sum()
             
             # Add Total Units column
-            pivot_table['Total Units'] = yearly_sales.astype(int)  # Convert to integers
+            pivot_table['Total Units Sold'] = yearly_sales.astype(int)  # Convert to integers
             
             # Calculate and add return rate
             pivot_table['Return Rate'] = (yearly_returns / yearly_sales * 100).round(2)
@@ -175,13 +175,11 @@ def create_returns_summary_table(data):
         st.subheader("Monthly Returns Breakdown")
         
         # Format all numeric columns except Return Rate
-        numeric_cols = list(month_names.values()) + ['Total Units']
+        numeric_cols = list(month_names.values()) + ['Total Units Sold']
         
         # Create formatter dictionary for all columns
-        formatters = {}
-        for col in numeric_cols:
-            formatters[col] = lambda x: f"{int(x):,}"
-        formatters['Return Rate'] = lambda x: f"{x:.2f}%"
+        formatters = {col: '{:,}'.format for col in numeric_cols}
+        formatters['Return Rate'] = '{:.2f}%'.format
         
         # Apply formatting
         styled_table = pivot_table.style.format(formatters)
