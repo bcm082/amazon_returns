@@ -75,6 +75,9 @@ def search_products_page():
 
     # Single search bar with unique key
     search_query = st.text_input("Search by ASIN or SKU", "", key="product_search")
+    
+    # Trim whitespace from search query
+    search_query = search_query.strip() if search_query else ""
 
     if search_query:
         # Load data with caching
