@@ -80,18 +80,22 @@ def search_products_page():
         # Load data with caching
         sales_data_2023 = load_sales_data(2023)
         sales_data_2024 = load_sales_data(2024)
+        sales_data_2025 = load_sales_data(2025)
         returns_data_2023 = load_returns_data(2023)
         returns_data_2024 = load_returns_data(2024)
+        returns_data_2025 = load_returns_data(2025)
 
         # Add year column to track data source
         sales_data_2023['year'] = 2023
         sales_data_2024['year'] = 2024
+        sales_data_2025['year'] = 2025
         returns_data_2023['year'] = 2023
         returns_data_2024['year'] = 2024
+        returns_data_2025['year'] = 2025
 
-        # Combine data from both years
-        sales_data = pd.concat([sales_data_2023, sales_data_2024])
-        returns_data = pd.concat([returns_data_2023, returns_data_2024])
+        # Combine data from all years
+        sales_data = pd.concat([sales_data_2023, sales_data_2024, sales_data_2025])
+        returns_data = pd.concat([returns_data_2023, returns_data_2024, returns_data_2025])
 
         # Convert search query to uppercase
         search_query_upper = search_query.upper()
@@ -162,6 +166,7 @@ def search_products_page():
             # Create separate DataFrames for each year
             data_2023 = merged_data[merged_data['year'] == 2023].copy()
             data_2024 = merged_data[merged_data['year'] == 2024].copy()
+            data_2025 = merged_data[merged_data['year'] == 2025].copy()
 
             # Format the display data for each year
             display_2023 = pd.DataFrame({
@@ -182,43 +187,109 @@ def search_products_page():
                 'Top Return Reason': data_2024['Return Reason']
             }) if not data_2024.empty else pd.DataFrame()
 
+            display_2025 = pd.DataFrame({
+                'ASIN': data_2025['asin'],
+                'SKUs': data_2025['SKUs'],
+                'Units Sold': data_2025['quantity'].astype(int),
+                'Returns': data_2025['Return quantity'].astype(int),
+                'Return Rate': data_2025['Return Rate'],
+                'Top Return Reason': data_2025['Return Reason']
+            }) if not data_2025.empty else pd.DataFrame()
+
             # Show summary statistics first
-            st.subheader("Summary")
+            st.header("Summary Statistics")
+            st.markdown("""<style>
+            .summary-box {
+                border: 1px solid #e0e0e0;
+                border-radius: 5px;
+                padding: 20px;
+                margin: 10px 0;
+                background-color: #f8f9fa;
+            }
+            </style>""", unsafe_allow_html=True)
             
-            # Calculate totals for both years
+            # Calculate totals for all years
             total_units_2023 = display_2023['Units Sold'].sum() if not display_2023.empty else 0
             total_returns_2023 = display_2023['Returns'].sum() if not display_2023.empty else 0
             total_units_2024 = display_2024['Units Sold'].sum() if not display_2024.empty else 0
             total_returns_2024 = display_2024['Returns'].sum() if not display_2024.empty else 0
+            total_units_2025 = display_2025['Units Sold'].sum() if not display_2025.empty else 0
+            total_returns_2025 = display_2025['Returns'].sum() if not display_2025.empty else 0
             
             # Calculate return rates
             return_rate_2023 = (total_returns_2023 / total_units_2023 * 100) if total_units_2023 > 0 else 0
             return_rate_2024 = (total_returns_2024 / total_units_2024 * 100) if total_units_2024 > 0 else 0
+            return_rate_2025 = (total_returns_2025 / total_units_2025 * 100) if total_units_2025 > 0 else 0
 
-            # Display metrics for each year
-            col1, col2 = st.columns(2)
+            # Calculate total across all years
+            total_units = total_units_2023 + total_units_2024 + total_units_2025
+            total_returns = total_returns_2023 + total_returns_2024 + total_returns_2025
+            total_return_rate = (total_returns / total_units * 100) if total_units > 0 else 0
+
+            # Display overall summary
+            st.markdown("<div class='summary-box'>", unsafe_allow_html=True)
+            st.subheader("Overall Performance")
+            overall_cols = st.columns(3)
+            with overall_cols[0]:
+                st.metric("Total Units Sold", f"{int(total_units):,}")
+            with overall_cols[1]:
+                st.metric("Total Returns", f"{int(total_returns):,}")
+            with overall_cols[2]:
+                st.metric("Overall Return Rate", f"{total_return_rate:.2f}%")
+            st.markdown("</div>", unsafe_allow_html=True)
+
+            # Display yearly metrics
+            st.markdown("<div class='summary-box'>", unsafe_allow_html=True)
+            st.subheader("Yearly Breakdown")
             
-            with col1:
-                st.markdown("### 2024")
-                col11, col12, col13 = st.columns(3)
-                with col11:
-                    st.metric("Units Sold", f"{int(total_units_2024):,}")
-                with col12:
-                    st.metric("Returns", f"{int(total_returns_2024):,}")
-                with col13:
-                    st.metric("Return Rate", f"{return_rate_2024:.2f}%")
-                    
-            with col2:
-                st.markdown("### 2023")
-                col21, col22, col23 = st.columns(3)
-                with col21:
-                    st.metric("Units Sold", f"{int(total_units_2023):,}")
-                with col22:
-                    st.metric("Returns", f"{int(total_returns_2023):,}")
-                with col23:
-                    st.metric("Return Rate", f"{return_rate_2023:.2f}%")
+            # 2025
+            st.markdown("#### 2025")
+            year_2025_cols = st.columns(3)
+            with year_2025_cols[0]:
+                st.metric("Units Sold", f"{int(total_units_2025):,}", 
+                         delta=f"{int(total_units_2025 - total_units_2024):,}" if total_units_2024 > 0 else None)
+            with year_2025_cols[1]:
+                st.metric("Returns", f"{int(total_returns_2025):,}",
+                         delta=f"{int(total_returns_2025 - total_returns_2024):,}" if total_returns_2024 > 0 else None)
+            with year_2025_cols[2]:
+                st.metric("Return Rate", f"{return_rate_2025:.2f}%",
+                         delta=f"{(return_rate_2025 - return_rate_2024):.2f}%" if return_rate_2024 > 0 else None)
 
-            # Display 2024 results first
+            # 2024
+            st.markdown("#### 2024")
+            year_2024_cols = st.columns(3)
+            with year_2024_cols[0]:
+                st.metric("Units Sold", f"{int(total_units_2024):,}",
+                         delta=f"{int(total_units_2024 - total_units_2023):,}" if total_units_2023 > 0 else None)
+            with year_2024_cols[1]:
+                st.metric("Returns", f"{int(total_returns_2024):,}",
+                         delta=f"{int(total_returns_2024 - total_returns_2023):,}" if total_returns_2023 > 0 else None)
+            with year_2024_cols[2]:
+                st.metric("Return Rate", f"{return_rate_2024:.2f}%",
+                         delta=f"{(return_rate_2024 - return_rate_2023):.2f}%" if return_rate_2023 > 0 else None)
+
+            # 2023
+            st.markdown("#### 2023")
+            year_2023_cols = st.columns(3)
+            with year_2023_cols[0]:
+                st.metric("Units Sold", f"{int(total_units_2023):,}")
+            with year_2023_cols[1]:
+                st.metric("Returns", f"{int(total_returns_2023):,}")
+            with year_2023_cols[2]:
+                st.metric("Return Rate", f"{return_rate_2023:.2f}%")
+            st.markdown("</div>", unsafe_allow_html=True)
+
+            # Display 2025 results first
+            if not display_2025.empty:
+                st.subheader("2025 Results")
+                formatted_2025 = display_2025.style.format({
+                    'Units Sold': lambda x: f"{int(x):,}",
+                    'Returns': lambda x: f"{int(x):,}",
+                    'Return Rate': '{:.2f}%'
+                })
+                st.dataframe(formatted_2025, hide_index=True)
+
+            # Display 2024 results
             if not display_2024.empty:
                 st.subheader("2024 Results")
                 formatted_2024 = display_2024.style.format({

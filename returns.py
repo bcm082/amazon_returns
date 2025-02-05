@@ -24,7 +24,7 @@ def list_files(directory, file_extension):
 @st.cache_data
 def load_all_returns_data():
     returns_dir = 'Data/Returns'
-    returns_files = ['Returns_2023.csv', 'Returns_2024.csv']
+    returns_files = ['Returns_2023.csv', 'Returns_2024.csv', 'Returns_2025.csv']
     
     # Load and combine all returns files
     data_frames = []
