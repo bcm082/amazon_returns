@@ -13,6 +13,11 @@ def load_data():
     # Load main data
     df = pd.read_csv(main_file_path)
     
+    # Calculate Total Sold
+    months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 
+             'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+    df['Total Sold'] = df[months].sum(axis=1)
+    
     # Load and merge inventory data if available
     if os.path.exists(inventory_file_path):
         inventory_df = pd.read_csv(inventory_file_path)
