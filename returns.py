@@ -52,7 +52,7 @@ def create_returns_summary_table(data):
 
         # Convert dates to datetime
         try:
-            df['Return request date'] = pd.to_datetime(df['Return request date'])
+            df['Return request date'] = pd.to_datetime(df['Return request date'], format='%m/%d/%y')
             df = df.dropna(subset=['Return request date'])
         except Exception as e:
             st.error(f"Error converting dates: {str(e)}")
@@ -99,7 +99,7 @@ def create_returns_summary_table(data):
             file_path = os.path.join('Data/Sales', f'Sales_{year}.csv')
             if os.path.exists(file_path):
                 year_sales = pd.read_csv(file_path)
-                year_sales['purchase-date'] = pd.to_datetime(year_sales['purchase-date'])
+                year_sales['purchase-date'] = pd.to_datetime(year_sales['purchase-date'], format='%m/%d/%y')
                 year_sales['year'] = year_sales['purchase-date'].dt.year
                 sales_data.append(year_sales)
 
