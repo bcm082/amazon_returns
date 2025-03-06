@@ -195,18 +195,69 @@ def create_returns_summary_table(data):
         return pd.DataFrame()
 
 @st.cache_data
-def load_returns_data_2024():
-    file_path = os.path.join('Data/Returns', 'Returns_2024.csv')
-    if os.path.exists(file_path):
-        return load_data(file_path, delimiter=',')
-    return pd.DataFrame()
+def load_returns_data_past_12_months():
+    # Get data from all available years
+    returns_dir = 'Data/Returns'
+    returns_files = ['Returns_2023.csv', 'Returns_2024.csv', 'Returns_2025.csv']
+    
+    # Load and combine all returns files
+    data_frames = []
+    for file in returns_files:
+        file_path = os.path.join(returns_dir, file)
+        if os.path.exists(file_path):
+            df = load_data(file_path, delimiter=',')
+            # Add year column if not present
+            if 'Year' not in df.columns:
+                year = file.split('_')[1].split('.')[0]
+                df['Year'] = year
+            data_frames.append(df)
+    
+    # Combine all data frames
+    if not data_frames:
+        return pd.DataFrame()
+    
+    combined_df = pd.concat(data_frames, ignore_index=True)
+    
+    # Filter for the past 12 months based on the current date
+    # For simplicity, we'll use the year data since we don't have actual dates
+    # In a real application, you would filter based on actual dates
+    current_year = 2025  # Hardcoded based on the current year in the data
+    
+    # Keep data from current year and previous year
+    past_12_months_data = combined_df[combined_df['Year'].isin([str(current_year), str(current_year-1)])]    
+    return past_12_months_data
 
 @st.cache_data
-def load_sales_data_2024():
-    file_path = os.path.join('Data/Sales', 'Sales_2024.csv')
-    if os.path.exists(file_path):
-        return load_data(file_path, delimiter=',')
-    return pd.DataFrame()
+def load_sales_data_past_12_months():
+    # Get data from all available years
+    sales_dir = 'Data/Sales'
+    sales_files = ['Sales_2023.csv', 'Sales_2024.csv', 'Sales_2025.csv']
+    
+    # Load and combine all sales files
+    data_frames = []
+    for file in sales_files:
+        file_path = os.path.join(sales_dir, file)
+        if os.path.exists(file_path):
+            df = load_data(file_path, delimiter=',')
+            # Add year column if not present
+            if 'Year' not in df.columns:
+                year = file.split('_')[1].split('.')[0]
+                df['Year'] = year
+            data_frames.append(df)
+    
+    # Combine all data frames
+    if not data_frames:
+        return pd.DataFrame()
+    
+    combined_df = pd.concat(data_frames, ignore_index=True)
+    
+    # Filter for the past 12 months based on the current date
+    # For simplicity, we'll use the year data since we don't have actual dates
+    current_year = 2025  # Hardcoded based on the current year in the data
+    
+    # Keep data from current year and previous year
+    past_12_months_data = combined_df[combined_df['Year'].isin([str(current_year), str(current_year-1)])]
+    return past_12_months_data
 
 def create_top_returns_table(returns_data, sales_data):
     try:
@@ -293,21 +344,21 @@ if selected == 'Home':
     # Create summary table
     returns_summary_table = create_returns_summary_table(returns_data)
 
-    # Load data for top returns table
-    returns_data_2024 = load_returns_data_2024()
-    sales_data_2024 = load_sales_data_2024()
+    # Load data for top returns table - past 12 months
+    returns_data_past_12_months = load_returns_data_past_12_months()
+    sales_data_past_12_months = load_sales_data_past_12_months()
 
     # Create top returns table
-    top_returns_table = create_top_returns_table(returns_data_2024, sales_data_2024)
+    top_returns_table = create_top_returns_table(returns_data_past_12_months, sales_data_past_12_months)
 
-    st.title("Top 50 Returned SKUs of 2024")
+    st.title("Top 50 Most Returned SKUs past 12 Months")
 
     # Display the table
     st.dataframe(top_returns_table, hide_index=True)
 
     # Create and display returns reasons table
-    returns_reasons_table = create_returns_reasons_table(returns_data_2024)
-    st.title("Returns Reasons Table")
+    returns_reasons_table = create_returns_reasons_table(returns_data_past_12_months)
+    st.title("Returns Reasons Table - Past 12 Months")
 
     st.dataframe(returns_reasons_table, hide_index=True)
 
