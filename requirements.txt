@@ -1,0 +1,17 @@
+streamlit
+pandas
+matplotlib
+plotly
+watchdog
+python-dotenv
+pydantic
+httpx
+distro
+duckdb
+sqlglot
+sqlalchemy
+astor
+jiter
+pandasai
+streamlit-option-menu
+openai
