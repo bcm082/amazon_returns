@@ -1,6 +1,14 @@
 # Use an official Miniconda3 base image
 FROM continuumio/miniconda3:latest
 
+# ----> ADD THIS SECTION <----
+# First, update package lists and install system-level build tools like gcc.
+# The '-y' flag auto-confirms the installation.
+# We clean up the apt cache at the end to keep the image size small.
+RUN apt-get update && apt-get install -y build-essential && \
+    rm -rf /var/lib/apt/lists/*
+# -----------------------------
+
 # Set the working directory in the container
 WORKDIR /app
 
@@ -18,6 +26,5 @@ COPY . .
 EXPOSE 8501
 
 # Command to run your Streamlit app
-# This uses 'conda run' to execute the command in your custom environment
 # Replace 'amazon_returns_ENV' with the name from your environment.yml
 CMD ["conda", "run", "-n", "amazon_returns_ENV", "streamlit", "run", "returns.py", "--server.port=8501", "--server.address=0.0.0.0"]
