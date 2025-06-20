@@ -1,16 +1,17 @@
 name: amazon_returns_ENV
 channels:
-  # This tells Conda to prefer the conda-forge channel
-  - conda-forge 
+  - conda-forge
+  - defaults # It's good practice to have defaults as a fallback
 
 dependencies:
   # --- CONDA PACKAGES ---
-  # List all packages that are available on conda-forge here.
-  # This ensures Conda handles the complex binary dependencies first.
+  # Let Conda handle the entire core data science stack first
+  # to ensure binary compatibility between numpy, pandas, etc.
   - python=3.12
   - pip
-  - streamlit
+  - numpy # Explicitly install numpy with conda
   - pandas
+  - streamlit
   - matplotlib
   - plotly
   - watchdog
@@ -25,11 +26,9 @@ dependencies:
   - jiter
 
   # --- PIP PACKAGES ---
-  # Packages listed here will be installed by pip *after* the
-  # conda packages are installed.
+  # Pip will run after Conda is finished and use the
+  # libraries Conda has already installed.
   - pip:
     - pandasai
     - streamlit-option-menu
     - openai
-  
-
