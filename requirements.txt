@@ -12,6 +12,6 @@ sqlglot
 sqlalchemy
 astor
 jiter
-pandasai
+pandasai<2.0.0
 streamlit-option-menu
 openai
