@@ -3,7 +3,7 @@ import streamlit as st
 import os
 import time
 import re
-from pandasai import SmartDataframe
+from pandasai.smart_dataframe import SmartDataframe
 from pandasai.llm import OpenAI
 
 # Environment variables should already be loaded in the conda environment
