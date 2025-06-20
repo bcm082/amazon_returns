@@ -6,19 +6,9 @@ import re
 from pandasai.smart_dataframe import SmartDataframe
 from pandasai.llm import OpenAI
 
-# Cache the AI model initialization
-@st.cache_resource
-def initialize_llm():
-    try:
-        return OpenAI(api_token=os.environ.get("OPENAI_API_KEY"))
-    except Exception as e:
-        st.error(f"Error initializing AI: {str(e)}")
-        return None
-
 # Environment variables should already be loaded in the conda environment
 
 # Function to extract DataFrame-like text into a pandas DataFrame for Streamlit rendering
-@st.cache_data(show_spinner="Processing data...")
 def extract_dataframe_from_text(text):
     # Define common column names to look for
     common_columns = ['sku', 'quantity', 'year', 'purchase', 'purchase-date', 'asin', 'return']
@@ -195,19 +185,17 @@ def ai_chat_page():
         You can ask questions that combine both datasets, such as "What products have high sales but also high return rates?"
         """)
     
-    # Initialize session state variables
+    # Initialize session state variables if they don't exist
     if 'chat_history' not in st.session_state:
         st.session_state.chat_history = []
+    
     if 'data_loaded' not in st.session_state:
         st.session_state.data_loaded = False
-    if 'llm' not in st.session_state:
-        st.session_state.llm = initialize_llm()
-    if 'data_dict' not in st.session_state:
-        st.session_state.data_dict = {}
+        st.session_state.data_dict = None
+        st.session_state.llm = None
+        
     if 'response_cache' not in st.session_state:
         st.session_state.response_cache = {}
-    if 'extracted_dataframes' not in st.session_state:
-        st.session_state.extracted_dataframes = {}
     
     # Function to load and combine all data
     @st.cache_data
@@ -265,13 +253,21 @@ def ai_chat_page():
             return None
     
     # Load data if not already loaded
-    if not st.session_state.data_loaded and st.session_state.llm is not None:
-        with st.spinner("Loading data... This may take a moment."):
+    if not st.session_state.data_loaded:
+        with st.spinner("Loading data and initializing AI... This may take a moment."):
             data_dict = load_all_data()
             if data_dict:
                 st.session_state.data_dict = data_dict
-                st.session_state.data_loaded = True
-                st.success("Data loaded successfully!")
+                
+                # Initialize OpenAI LLM
+                try:
+                    llm = OpenAI(api_token=os.environ.get("OPENAI_API_KEY"))
+                    st.session_state.llm = llm
+                    st.session_state.data_loaded = True
+                    st.success("Data loaded and AI initialized successfully!")
+                        
+                except Exception as e:
+                    st.error(f"Error initializing AI: {str(e)}")
             else:
                 st.error("Failed to load data.")
     
