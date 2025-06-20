@@ -7,6 +7,7 @@ from streamlit_option_menu import option_menu
 import search_products  # Import the search_products module
 import top_sellers  # Import the top_sellers module
 import year_on_year  # Import the year_on_year module
+import ai_chat  # Import the ai_chat module
 
 @st.cache_data
 def load_data(file_path, delimiter):
@@ -333,8 +334,8 @@ if 'page' not in st.session_state:
 
 # Sidebar navigation using option_menu
 with st.sidebar:
-    selected = option_menu("Main Menu", ["Home", "Search", "Top Sellers", "Year on Year Analysis"], 
-                           icons=['house', 'search', 'graph-up', 'calendar-range'], menu_icon="cast", default_index=0)
+    selected = option_menu("Main Menu", ["Home", "Search", "Top Sellers", "Year on Year Analysis", "AI Chat"], 
+                           icons=['house', 'search', 'graph-up', 'calendar-range', 'chat-dots'], menu_icon="cast", default_index=0)
 
 # Page content based on navigation
 if selected == 'Home':
@@ -370,3 +371,6 @@ elif selected == 'Top Sellers':
 
 elif selected == 'Year on Year Analysis':
     year_on_year.year_on_year_page()  # Call the function from year_on_year
+
+elif selected == 'AI Chat':
+    ai_chat.ai_chat_page()  # Call the function from ai_chat

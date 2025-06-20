@@ -1,0 +1,35 @@
+name: amazon_returns_ENV
+channels:
+  # This tells Conda to prefer the conda-forge channel
+  - conda-forge 
+
+dependencies:
+  # --- CONDA PACKAGES ---
+  # List all packages that are available on conda-forge here.
+  # This ensures Conda handles the complex binary dependencies first.
+  - python=3.12
+  - pip
+  - streamlit
+  - pandas
+  - matplotlib
+  - plotly
+  - watchdog
+  - python-dotenv
+  - pydantic
+  - httpx
+  - distro
+  - duckdb
+  - sqlglot
+  - sqlalchemy
+  - astor
+  - jiter
+
+  # --- PIP PACKAGES ---
+  # Packages listed here will be installed by pip *after* the
+  # conda packages are installed.
+  - pip:
+    - pandasai
+    - streamlit-option-menu
+    - openai
+  
+
