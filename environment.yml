@@ -28,7 +28,7 @@ dependencies:
   # --- PIP PACKAGES ---
   # Pip will run after Conda is finished and use the
   # libraries Conda has already installed.
-  - pip:
-    - pandasai
-    - streamlit-option-menu
-    - openai
+- pip:
+  - pandasai --no-deps
+  - streamlit-option-menu --no-deps
+  - openai --no-deps
